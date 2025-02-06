@@ -1,10 +1,13 @@
 {
-    "products": [
-        {
-            "id": 1,
-            "name": "\u0441\u043e\u0441\u0438\u0441\u043a\u0438",
-            "price": 100.0,
-            "description": "\u043a\u043e\u043f\u0447\u0435\u043d\u043d\u044b\u0435"
-        }
-    ]
+    "categories": {
+        "\u0415\u0434\u0430": [
+            {
+                "id": 1,
+                "name": "\ud83c\udf55",
+                "price": 20.0,
+                "quantity": 10,
+                "description": "\u043f\u0438\u0446\u0446\u0430 \u041c\u0430\u0440\u0433\u0430\u0440\u0438\u0442\u0430"
+            }
+        ]
+    }
 }

@@ -11,16 +11,33 @@ class Storage:
             with open(self.filename, "r") as f:
                 self.data = json.load(f)
         else:
-            self.data = {"products": []}
+            self.data = {"categories": {}}
 
     def _save_data(self):
         with open(self.filename, "w") as f:
             json.dump(self.data, f, indent=4)
 
-    def add_item(self, name, price, description):
-        item_id = len(self.data["products"]) + 1
-        self.data["products"].append({"id": item_id, "name": name, "price": price, "description": description})
+    def add_category(self, category_name):
+        if category_name not in self.data["categories"]:
+            self.data["categories"][category_name] = []
+            self._save_data()
+
+    def add_item(self, category, name, price, quantity, description):
+        if category not in self.data["categories"]:
+            self.add_category(category)
+
+        item_id = len(self.data["categories"][category]) + 1
+        self.data["categories"][category].append({
+            "id": item_id,
+            "name": name,
+            "price": price,
+            "quantity": quantity,
+            "description": description
+        })
         self._save_data()
 
-    def get_all_items(self):
-        return self.data["products"]
+    def get_categories(self):
+        return list(self.data["categories"].keys())
+
+    def get_items_by_category(self, category):
+        return self.data["categories"].get(category, [])
