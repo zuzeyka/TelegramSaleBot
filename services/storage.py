@@ -36,6 +36,39 @@ class Storage:
         })
         self._save_data()
 
+    def get_all_items(self):
+        all_items = []
+        for category, items in self.data["categories"].items():
+            for item in items:
+                all_items.append({
+                    "category": category,
+                    "id": item["id"],
+                    "name": item["name"],
+                    "price": item["price"],
+                    "quantity": item["quantity"],
+                    "description": item["description"]
+                })
+        return all_items
+
+    def get_item(self, category, item_id):
+        items = self.data["categories"].get(category, [])
+        for item in items:
+            if item["id"] == item_id:
+                return item
+        return None
+
+    def edit_item(self, category, item_id, name, price, quantity, description):
+        items = self.data["categories"].get(category, [])
+        for item in items:
+            if item["id"] == item_id:
+                item["name"] = name
+                item["price"] = price
+                item["quantity"] = quantity
+                item["description"] = description
+                self._save_data()
+                return True
+        return False
+
     def get_categories(self):
         return list(self.data["categories"].keys())
 

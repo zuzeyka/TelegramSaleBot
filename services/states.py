@@ -6,3 +6,8 @@ class AddItemState(StatesGroup):
     waiting_for_description = State()
     waiting_for_category = State()
     waiting_for_quantity = State()
+
+class EditItemState(StatesGroup):
+    waiting_for_category = State()
+    waiting_for_item_id = State()
+    waiting_for_new_data = State()
