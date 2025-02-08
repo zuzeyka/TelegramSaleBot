@@ -2,9 +2,13 @@ import json
 import os
 
 class Storage:
-    def __init__(self, filename="products.json"):
+    def __init__(self, filename="products.json", image_folder="images"):
         self.filename = filename
+        self.image_folder = image_folder
         self._load_data()
+
+        if not os.path.exists(self.image_folder):
+            os.makedirs(self.image_folder)
 
     def _load_data(self):
         if os.path.exists(self.filename):
@@ -22,7 +26,7 @@ class Storage:
             self.data["categories"][category_name] = []
             self._save_data()
 
-    def add_item(self, category, name, price, quantity, description):
+    def add_item(self, category, name, price, quantity, description, image_path):
         if category not in self.data["categories"]:
             self.add_category(category)
 
@@ -32,7 +36,8 @@ class Storage:
             "name": name,
             "price": price,
             "quantity": quantity,
-            "description": description
+            "description": description,
+            "image_path": image_path
         })
         self._save_data()
 

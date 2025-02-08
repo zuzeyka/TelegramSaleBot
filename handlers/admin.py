@@ -5,6 +5,7 @@ from aiogram.filters.state import StateFilter
 from services.storage import Storage
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from services.states import AddItemState, EditItemState
+import os
 
 storage = Storage()
 
@@ -50,15 +51,34 @@ async def item_quantity_handler(message: types.Message, state: FSMContext):
         await message.answer("Ошибка! Введите корректное количество (только число).")
 
 async def item_description_handler(message: types.Message, state: FSMContext):
+    await state.update_data(description=message.text)
+    await message.answer("Отправьте изображение товара (фото).")
+    await state.set_state(AddItemState.waiting_for_image)
+
+async def item_image_handler(message: types.Message, state: FSMContext):
+    if not message.photo:
+        await message.answer("Ошибка! Отправьте изображение, а не текст.")
+        return
+
     data = await state.get_data()
     category = data["category"]
     name = data["name"]
     price = data["price"]
     quantity = data["quantity"]
-    description = message.text
+    description = data["description"]
 
-    storage.add_item(category, name, price, quantity, description)
-    await message.answer(f"Товар '{name}' добавлен в категорию '{category}'!")
+    bot = message.bot
+
+    photo = message.photo[-1]
+    file = await bot.get_file(photo.file_id)
+    file_path = file.file_path
+
+    image_filename = f"{name.replace(' ', '_')}.jpg"
+    local_path = os.path.join(storage.image_folder, image_filename)
+    await bot.download_file(file_path, local_path)
+
+    storage.add_item(category, name, price, quantity, description, local_path)
+    await message.answer(f"✅ Товар '{name}' добавлен в категорию '{category}'!")
     await state.clear()
 
 
@@ -153,6 +173,7 @@ def register_handlers_admin(dp: Dispatcher):
     dp.message.register(item_price_handler, StateFilter(AddItemState.waiting_for_price))
     dp.message.register(item_description_handler, StateFilter(AddItemState.waiting_for_description))
     dp.message.register(item_quantity_handler, StateFilter(AddItemState.waiting_for_quantity))
+    dp.message.register(item_image_handler, StateFilter(AddItemState.waiting_for_image))
     dp.message.register(view_items_handler, Command("view_items"))
     dp.message.register(edit_item_handler, Command("edit_item"))
     dp.callback_query.register(edit_item_category_handler, lambda cb: cb.data.startswith("edit_category_"))

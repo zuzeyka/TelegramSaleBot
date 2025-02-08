@@ -1,5 +1,6 @@
 from aiogram import Dispatcher, types
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+from aiogram.types import FSInputFile  
 from aiogram.filters import Command
 from services.storage import Storage
 
@@ -50,16 +51,22 @@ def register_handlers_user(dp: Dispatcher):
     async def show_items_handler(callback_query: types.CallbackQuery):
         category = callback_query.data.replace("category_", "")
         items = storage.get_items_by_category(category)
-        
+
         if not items:
             await callback_query.message.answer(f"В категории '{category}' нет товаров.")
             return
 
-        response = f"Товары в категории '{category}':\n\n"
         for item in items:
-            response += f"🔹 {item['name']} | {item['price']} USD | Количество: {item['quantity']}\nОписание: {item['description']}\n\n"
-        
-        await callback_query.message.answer(response)
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(types.InlineKeyboardButton(text="🛒 Купить", callback_data=f"buy_{category}_{item['id']}"))
+
+            photo = FSInputFile(item["image_path"])  
+
+            await callback_query.message.answer_photo(
+                photo=photo,
+                caption=f"🔹 {item['name']}\n💰 Цена: {item['price']} USD\n📦 Остаток: {item['quantity']} шт.\n📝 {item['description']}",
+                reply_markup=keyboard.as_markup()
+            )
     
     dp.message.register(start_handler, Command("start"))
     dp.callback_query.register(show_items_handler, lambda cb: cb.data.startswith("category_"))
