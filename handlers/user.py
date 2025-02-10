@@ -25,7 +25,19 @@ def register_handlers_user(dp: Dispatcher):
         await message.answer(f"Ваш Telegram ID: `{user_id}`", parse_mode="Markdown")
 
     async def availability_handler(message: types.Message):
-        await message.answer("Доступные товары")
+        all_items = storage.get_all_items()
+        if not all_items:
+            await message.answer("Список товаров пуст.")
+            return
+
+        response = "📦 **Наличие товаров:**\n\n"
+        for item in all_items:
+            response += (
+                f"🔹**Название:** **{item['name']}**\n"
+                f"📦 **Остаток:** {item['quantity']} шт.\n\n"
+            )
+
+        await message.answer(response, parse_mode="Markdown")
     
     async def about_handler(message: types.Message):
         await message.answer("Описание сайта. Создан @zuzeyka")
