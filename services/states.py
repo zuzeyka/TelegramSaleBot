@@ -11,4 +11,6 @@ class AddItemState(StatesGroup):
 class EditItemState(StatesGroup):
     waiting_for_category = State()
     waiting_for_item_id = State()
-    waiting_for_new_data = State()
+    waiting_for_property_choice = State()
+    waiting_for_new_value = State()
+    waiting_for_new_image = State()

@@ -81,7 +81,6 @@ async def item_image_handler(message: types.Message, state: FSMContext):
     await message.answer(f"✅ Товар '{name}' добавлен в категорию '{category}'!")
     await state.clear()
 
-
 async def view_items_handler(message: types.Message):
     items = storage.get_all_items()
     if items:
@@ -130,40 +129,88 @@ async def edit_item_id_handler(message: types.Message, state: FSMContext):
 
         if item:
             await state.update_data(item_id=item_id)
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(types.InlineKeyboardButton(text="Название", callback_data="edit_name"))
+            keyboard.add(types.InlineKeyboardButton(text="Цену", callback_data="edit_price"))
+            keyboard.add(types.InlineKeyboardButton(text="Количество", callback_data="edit_quantity"))
+            keyboard.add(types.InlineKeyboardButton(text="Описание", callback_data="edit_description"))
+            keyboard.add(types.InlineKeyboardButton(text="Изображение", callback_data="edit_image"))
+            keyboard.adjust(2)
+
             await message.answer(
                 f"Редактируем товар:\n"
                 f"🔹 Название: {item['name']}\n"
                 f"💰 Цена: {item['price']} USD\n"
                 f"📦 Количество: {item['quantity']}\n"
                 f"📝 Описание: {item['description']}\n\n"
-                f"Введите новые данные в формате:\n"
-                f"`Название;Цена;Количество;Описание`", parse_mode="Markdown"
+                f"Выберите, что вы хотите изменить:", reply_markup=keyboard.as_markup()
             )
-            await state.set_state(EditItemState.waiting_for_new_data)
+            await state.set_state(EditItemState.waiting_for_property_choice)
         else:
             await message.answer("Ошибка! Товар с таким ID не найден.")
     except ValueError:
         await message.answer("Ошибка! Введите корректный ID.")
 
+async def edit_item_property_choice_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    property_choice = callback_query.data.replace("edit_", "")
+    await state.update_data(property_choice=property_choice)
+    if property_choice == "image":
+        await callback_query.message.answer("Отправьте новое изображение товара.")
+        await state.set_state(EditItemState.waiting_for_new_image)
+    else:
+        await callback_query.message.answer(f"Введите новое значение для {property_choice}.")
+        await state.set_state(EditItemState.waiting_for_new_value)
+
 async def edit_item_save_handler(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    category = data["category"]
+    item_id = data["item_id"]
+    property_choice = data["property_choice"]
+
     try:
-        name, price, quantity, description = map(str.strip, message.text.split(";"))
-        price = float(price)
-        quantity = int(quantity)
-
-        data = await state.get_data()
-        category = data["category"]
-        item_id = data["item_id"]
-
-        success = storage.edit_item(category, item_id, name, price, quantity, description)
-        if success:
-            await message.answer(f"✅ Товар с ID {item_id} успешно обновлён!")
+        if property_choice == "price":
+            new_value = float(message.text)
+        elif property_choice == "quantity":
+            new_value = int(message.text)
         else:
-            await message.answer("Ошибка! Не удалось обновить товар.")
+            new_value = message.text.strip()
+
+        success = storage.edit_item_property(category, item_id, property_choice, new_value)
+        if success:
+            await message.answer(f"✅ {property_choice.capitalize()} товара с ID {item_id} успешно обновлено!")
+        else:
+            await message.answer(f"Ошибка! Не удалось обновить {property_choice} товара.")
     except ValueError:
-        await message.answer("Ошибка! Введите корректные данные в формате: `Название;Цена;Количество;Описание`.")
+        await message.answer(f"Ошибка! Введите корректное значение для {property_choice}.")
     finally:
         await state.clear()
+
+async def edit_item_image_handler(message: types.Message, state: FSMContext):
+    if not message.photo:
+        await message.answer("Ошибка! Отправьте изображение, а не текст.")
+        return
+
+    data = await state.get_data()
+    category = data["category"]
+    item_id = data["item_id"]
+    item = storage.get_item(category, item_id)
+
+    bot = message.bot
+
+    photo = message.photo[-1]
+    file = await bot.get_file(photo.file_id)
+    file_path = file.file_path
+
+    image_filename = f"{item['name'].replace(' ', '_')}.jpg"
+    local_path = os.path.join(storage.image_folder, image_filename)
+    await bot.download_file(file_path, local_path)
+
+    success = storage.edit_item_image(category, item_id, local_path)
+    if success:
+        await message.answer(f"✅ Изображение товара с ID {item_id} успешно обновлено!")
+    else:
+        await message.answer("Ошибка! Не удалось обновить изображение товара.")
+    await state.clear()
 
 def register_handlers_admin(dp: Dispatcher):
     dp.message.register(admin_panel_handler, Command("admin_panel"))
@@ -178,4 +225,6 @@ def register_handlers_admin(dp: Dispatcher):
     dp.message.register(edit_item_handler, Command("edit_item"))
     dp.callback_query.register(edit_item_category_handler, lambda cb: cb.data.startswith("edit_category_"))
     dp.message.register(edit_item_id_handler, StateFilter(EditItemState.waiting_for_item_id))
-    dp.message.register(edit_item_save_handler, StateFilter(EditItemState.waiting_for_new_data))
+    dp.callback_query.register(edit_item_property_choice_handler, StateFilter(EditItemState.waiting_for_property_choice))
+    dp.message.register(edit_item_save_handler, StateFilter(EditItemState.waiting_for_new_value))
+    dp.message.register(edit_item_image_handler, StateFilter(EditItemState.waiting_for_new_image))

@@ -62,14 +62,20 @@ class Storage:
                 return item
         return None
 
-    def edit_item(self, category, item_id, name, price, quantity, description):
+    def edit_item_property(self, category, item_id, property_name, new_value):
         items = self.data["categories"].get(category, [])
         for item in items:
             if item["id"] == item_id:
-                item["name"] = name
-                item["price"] = price
-                item["quantity"] = quantity
-                item["description"] = description
+                item[property_name] = new_value
+                self._save_data()
+                return True
+        return False
+
+    def edit_item_image(self, category, item_id, new_image_path):
+        items = self.data["categories"].get(category, [])
+        for item in items:
+            if item["id"] == item_id:
+                item["image_path"] = new_image_path
                 self._save_data()
                 return True
         return False
