@@ -80,6 +80,7 @@ def register_handlers_user(dp: Dispatcher):
             await callback_query.message.answer(f"Товары в категории '{category}':", reply_markup=keyboard.as_markup())
 
     async def show_items_handler(callback_query: types.CallbackQuery):
+        await callback_query.message.delete()
         _, category, item_id = callback_query.data.split("_")
         item_id = int(item_id)
         item = storage.get_item(category, item_id)
@@ -101,9 +102,11 @@ def register_handlers_user(dp: Dispatcher):
         )
 
     async def back_to_categories_handler(callback_query: types.CallbackQuery):
+        await callback_query.message.delete()
         await show_categories_handler(callback_query.message)
 
     async def back_to_category_handler(callback_query: types.CallbackQuery):
+        await callback_query.message.delete()
         category = callback_query.data.replace("back_to_category_", "")
         new_callback_query = types.CallbackQuery(
             id=callback_query.id,
