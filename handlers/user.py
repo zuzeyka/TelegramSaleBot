@@ -1,10 +1,13 @@
+from datetime import datetime
 from aiogram import Dispatcher, types
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from aiogram.types import FSInputFile  
 from aiogram.filters import Command
 from services.storage import Storage
+from services.user import UserManager
 
 storage = Storage()
+user_manager = UserManager()
 
 def register_handlers_user(dp: Dispatcher):
     builder = ReplyKeyboardBuilder()
@@ -18,11 +21,30 @@ def register_handlers_user(dp: Dispatcher):
     keyboard = builder.as_markup(resize_keyboard=True)
 
     async def start_handler(message: types.Message):
+        user_id = message.from_user.id
+        username = message.from_user.username
+    
+        user_manager.create_user(user_id, username)
         await message.answer(f"Hello, {message.from_user.full_name}!", reply_markup=keyboard)
 
     async def profile_handler(message: types.Message):
         user_id = message.from_user.id
-        await message.answer(f"Ваш Telegram ID: `{user_id}`", parse_mode="Markdown")
+        
+        balance = user_manager.get_balance(user_id)
+        orders = user_manager.get_orders(user_id)
+    
+        response = f"👤 **Ваш профиль**\n"
+        response += f"💰 **Баланс:** {balance} USD\n"
+        response += f"📜 **История покупок:**\n"
+    
+        if orders:
+            for order in orders[-5:]:
+                response += f"🔹 {order['item_name']} ({order['category']}) — {order['quantity']} шт. на {order['total_price']} USD\n"
+                response += f"📅 {order['date']}\n\n"
+        else:
+            response += "❌ Нет заказов.\n"
+    
+        await message.answer(response, parse_mode="Markdown")
 
     async def availability_handler(message: types.Message):
         all_items = storage.get_all_items()
@@ -119,6 +141,7 @@ def register_handlers_user(dp: Dispatcher):
 
     async def buy_item_handler(callback_query: types.CallbackQuery):
         _, category, item_id = callback_query.data.split("_")
+        user_id = callback_query.from_user.id
         item_id = int(item_id)
         item = storage.get_item(category, item_id)
 
@@ -126,7 +149,24 @@ def register_handlers_user(dp: Dispatcher):
             await callback_query.message.answer("Ошибка! Товар не найден.")
             return
 
-        # Implement the buying logic here
+        if item["quantity"] == 0:
+            await callback_query.message.answer("Товар закончился.")
+            return
+
+        if user_manager.get_balance(user_id) < item["price"]:
+            await callback_query.message.answer("Недостаточно средств.")
+            return
+
+        user_manager.subtract_balance(user_id, item["price"])
+        user_manager.add_order(user_id, {
+            "item_name": item["name"],
+            "category": category,
+            "price": item["price"],
+            "quantity": 1,
+            "total_price": item["price"],
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+        storage.change_item_quantity(category, item_id)
         await callback_query.message.answer(f"Вы купили товар '{item['name']}' за {item['price']} USD.")
 
     dp.message.register(start_handler, Command("start"))

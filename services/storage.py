@@ -61,6 +61,19 @@ class Storage:
             if item["id"] == item_id:
                 return item
         return None
+    
+    def change_item_quantity(self, category, item_id, new_quantity=-1):
+        items = self.data["categories"].get(category, [])
+        for item in items:
+            if item["id"] == item_id:
+                if new_quantity == -1:
+                    new_quantity = item["quantity"] - 1
+                else:
+                    new_quantity = max(0, new_quantity)
+                item["quantity"] = new_quantity
+                self._save_data()
+                return True
+        return False
 
     def edit_item_property(self, category, item_id, property_name, new_value):
         items = self.data["categories"].get(category, [])
