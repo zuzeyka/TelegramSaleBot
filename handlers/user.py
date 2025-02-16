@@ -5,6 +5,9 @@ from aiogram.types import FSInputFile
 from aiogram.filters import Command
 from services.storage import Storage
 from services.user import UserManager
+from aiogram.fsm.context import FSMContext
+from aiogram.filters.state import StateFilter
+from services.states import BuyItemState
 
 storage = Storage()
 user_manager = UserManager()
@@ -34,12 +37,12 @@ def register_handlers_user(dp: Dispatcher):
         orders = user_manager.get_orders(user_id)
     
         response = f"👤 **Ваш профиль**\n"
-        response += f"💰 **Баланс:** {balance} USD\n"
+        response += f"💰 **Баланс:** {balance:.2f} USD\n"
         response += f"📜 **История покупок:**\n"
     
         if orders:
             for order in orders[-5:]:
-                response += f"🔹 {order['item_name']} ({order['category']}) — {order['quantity']} шт. на {order['total_price']} USD\n"
+                response += f"🔹 {order['item_name']} ({order['category']}) — {order['quantity']} шт. на {order['total_price']:.2f} USD\n"
                 response += f"📅 {order['date']}\n\n"
         else:
             response += "❌ Нет заказов.\n"
@@ -83,6 +86,10 @@ def register_handlers_user(dp: Dispatcher):
         await message.answer("Выберите категорию:", reply_markup=keyboard.as_markup())
 
     async def show_items_in_category_handler(callback_query: types.CallbackQuery):
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            print(f"Failed to delete message: {e}")
         category = callback_query.data.replace("category_", "")
         items = storage.get_items_by_category(category)
 
@@ -96,13 +103,13 @@ def register_handlers_user(dp: Dispatcher):
 
         keyboard.add(types.InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_categories"))
 
-        if callback_query.message.text:
-            await callback_query.message.edit_text(f"Товары в категории '{category}':", reply_markup=keyboard.as_markup())
-        else:
-            await callback_query.message.answer(f"Товары в категории '{category}':", reply_markup=keyboard.as_markup())
+        await callback_query.message.answer(f"Товары в категории '{category}':", reply_markup=keyboard.as_markup())
 
     async def show_items_handler(callback_query: types.CallbackQuery):
-        await callback_query.message.delete()
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            print(f"Failed to delete message: {e}")
         _, category, item_id = callback_query.data.split("_")
         item_id = int(item_id)
         item = storage.get_item(category, item_id)
@@ -119,16 +126,22 @@ def register_handlers_user(dp: Dispatcher):
 
         await callback_query.message.answer_photo(
             photo=photo,
-            caption=f"🔹 {item['name']}\n💰 Цена: {item['price']} USD\n📦 Остаток: {item['quantity']} шт.\n📝 {item['description']}",
+            caption=f"🔹 {item['name']}\n💰 Цена: {item['price']:.2f} USD\n📦 Остаток: {item['quantity']} шт.\n📝 {item['description']}",
             reply_markup=keyboard.as_markup()
         )
 
     async def back_to_categories_handler(callback_query: types.CallbackQuery):
-        await callback_query.message.delete()
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            print(f"Failed to delete message: {e}")
         await show_categories_handler(callback_query.message)
 
     async def back_to_category_handler(callback_query: types.CallbackQuery):
-        await callback_query.message.delete()
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            print(f"Failed to delete message: {e}")
         category = callback_query.data.replace("back_to_category_", "")
         new_callback_query = types.CallbackQuery(
             id=callback_query.id,
@@ -139,9 +152,12 @@ def register_handlers_user(dp: Dispatcher):
         )
         await show_items_in_category_handler(new_callback_query)
 
-    async def buy_item_handler(callback_query: types.CallbackQuery):
+    async def buy_item_handler(callback_query: types.CallbackQuery, state: FSMContext):
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            print(f"Failed to delete message: {e}")
         _, category, item_id = callback_query.data.split("_")
-        user_id = callback_query.from_user.id
         item_id = int(item_id)
         item = storage.get_item(category, item_id)
 
@@ -149,25 +165,54 @@ def register_handlers_user(dp: Dispatcher):
             await callback_query.message.answer("Ошибка! Товар не найден.")
             return
 
-        if item["quantity"] == 0:
-            await callback_query.message.answer("Товар закончился.")
+        await state.update_data(category=category, item_id=item_id)
+        
+        keyboard = InlineKeyboardBuilder()
+        for i in range(1, 11):
+            keyboard.add(types.InlineKeyboardButton(text=str(i), callback_data=f"quantity_{i}"))
+        keyboard.add(types.InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_category_{category}"))
+
+        await callback_query.message.answer(f"Выберите количество товара '{item['name']}' (доступно {item['quantity']} шт.):", reply_markup=keyboard.as_markup())
+        await state.set_state(BuyItemState.waiting_for_quantity)
+
+    async def buy_item_quantity_handler(callback_query: types.CallbackQuery, state: FSMContext):
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            print(f"Failed to delete message: {e}")
+        quantity = int(callback_query.data.replace("quantity_", ""))
+        data = await state.get_data()
+        category = data["category"]
+        item_id = data["item_id"]
+        item = storage.get_item(category, item_id)
+        user_id = callback_query.from_user.id
+
+        if quantity <= 0:
+            await callback_query.message.answer("Ошибка! Введите корректное количество (больше нуля).")
             return
 
-        if user_manager.get_balance(user_id) < item["price"]:
+        if quantity > item["quantity"]:
+            await callback_query.message.answer(f"Ошибка! Доступно только {item['quantity']} шт.")
+            return
+
+        total_price = item["price"] * quantity
+
+        if user_manager.get_balance(user_id) < total_price:
             await callback_query.message.answer("Недостаточно средств.")
             return
 
-        user_manager.subtract_balance(user_id, item["price"])
+        user_manager.subtract_balance(user_id, total_price)
         user_manager.add_order(user_id, {
             "item_name": item["name"],
             "category": category,
             "price": item["price"],
-            "quantity": 1,
-            "total_price": item["price"],
+            "quantity": quantity,
+            "total_price": total_price,
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
-        storage.change_item_quantity(category, item_id)
-        await callback_query.message.answer(f"Вы купили товар '{item['name']}' за {item['price']} USD.")
+        storage.change_item_quantity(category, item_id, quantity)
+        await callback_query.message.answer(f"Вы купили {quantity} шт. товара '{item['name']}' за {total_price:.2f} USD.")
+        await state.clear()
 
     dp.message.register(start_handler, Command("start"))
     dp.callback_query.register(show_items_in_category_handler, lambda cb: cb.data.startswith("category_"))
@@ -175,6 +220,7 @@ def register_handlers_user(dp: Dispatcher):
     dp.callback_query.register(back_to_categories_handler, lambda cb: cb.data == "back_to_categories")
     dp.callback_query.register(back_to_category_handler, lambda cb: cb.data.startswith("back_to_category_"))
     dp.callback_query.register(buy_item_handler, lambda cb: cb.data.startswith("buy_"))
+    dp.callback_query.register(buy_item_quantity_handler, lambda cb: cb.data.startswith("quantity_"))
     dp.message.register(show_categories_handler, lambda msg: msg.text == "📖 Все товары")
     dp.message.register(availability_handler, lambda msg: msg.text == "📝 Наличие товаров")
     dp.message.register(about_handler, lambda msg: msg.text == "💡 О магазине")

@@ -14,3 +14,6 @@ class EditItemState(StatesGroup):
     waiting_for_property_choice = State()
     waiting_for_new_value = State()
     waiting_for_new_image = State()
+
+class BuyItemState(StatesGroup):
+    waiting_for_quantity = State()

@@ -5,7 +5,7 @@
                 "id": 1,
                 "name": "\ud83c\udf55",
                 "price": 19.99,
-                "quantity": 4,
+                "quantity": 2,
                 "description": "\u041f\u0438\u0446\u0446\u0430 \u041f\u0435\u043f\u043f\u0435\u0440\u043e\u043d\u0438",
                 "image_path": "images\\\ud83c\udf55.jpg"
             },
@@ -13,7 +13,7 @@
                 "id": 2,
                 "name": "\ud83c\udf54",
                 "price": 4.99,
-                "quantity": 19,
+                "quantity": 5,
                 "description": "\u0427\u0438\u0441\u0431\u0443\u0440\u0433\u0435\u0440",
                 "image_path": "images\\\ud83c\udf54.jpg"
             }
