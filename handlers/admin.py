@@ -14,6 +14,7 @@ async def admin_panel_handler(message: types.Message):
         "Добро пожаловать в админ-панель!\n"
         "Доступные команды:\n"
         "/add_item - Добавить товар\n"
+        "/delete_item - Удалить товар\n"
         "/edit_item - Изменить товар\n"
         "/view_items - Просмотреть все товары"
     )
@@ -21,6 +22,52 @@ async def admin_panel_handler(message: types.Message):
 async def add_item_handler(message: types.Message, state: FSMContext):
     await message.answer("Введите категорию товара:")
     await state.set_state(AddItemState.waiting_for_category)
+
+async def delete_item_handler(message: types.Message, state: FSMContext):
+    categories = storage.get_categories()
+    if not categories:
+        await message.answer("Категории товаров отсутствуют.")
+        return
+
+    keyboard = InlineKeyboardBuilder()
+    for category in categories:
+        keyboard.add(types.InlineKeyboardButton(text=category, callback_data=f"delete_category_{category}"))
+    
+    await message.answer("Выберите категорию для удаления товара:", reply_markup=keyboard.as_markup())
+    await state.set_state(AddItemState.waiting_for_delete_category)
+
+async def delete_item_category_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    category = callback_query.data.replace("delete_category_", "")
+    items = storage.get_items_by_category(category)
+    
+    if not items:
+        await callback_query.message.answer(f"В категории '{category}' нет товаров.")
+        return
+
+    keyboard = InlineKeyboardBuilder()
+    for item in items:
+        keyboard.add(types.InlineKeyboardButton(text=item["name"], callback_data=f"delete_item_{category}_{item['id']}"))
+
+    await callback_query.message.answer(f"Выберите товар для удаления (категория '{category}'):", reply_markup=keyboard.as_markup())
+    await state.update_data(category=category)
+    await state.set_state(AddItemState.waiting_for_delete_item)
+
+async def delete_item_confirm_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    data = callback_query.data.replace("delete_item_", "").split("_")
+    print(data, len(data))
+    if len(data) != 2:
+        await callback_query.message.answer("Ошибка! Неверный формат данных.")
+        return
+
+    category, item_id = data
+    item_id = int(item_id)
+    success = storage.delete_item(category, item_id)
+
+    if success:
+        await callback_query.message.answer(f"✅ Товар с ID {item_id} успешно удален!")
+    else:
+        await callback_query.message.answer("Ошибка! Не удалось удалить товар.")
+    await state.clear()
 
 async def item_category_handler(message: types.Message, state: FSMContext):
     await state.update_data(category=message.text)
@@ -215,6 +262,9 @@ async def edit_item_image_handler(message: types.Message, state: FSMContext):
 def register_handlers_admin(dp: Dispatcher):
     dp.message.register(admin_panel_handler, Command("admin_panel"))
     dp.message.register(add_item_handler, Command("add_item"))
+    dp.message.register(delete_item_handler, Command("delete_item"))
+    dp.callback_query.register(delete_item_category_handler, lambda cb: cb.data.startswith("delete_category_"))
+    dp.callback_query.register(delete_item_confirm_handler, lambda cb: cb.data.startswith("delete_item_"))
     dp.message.register(item_category_handler, StateFilter(AddItemState.waiting_for_category))
     dp.message.register(item_name_handler, StateFilter(AddItemState.waiting_for_name))
     dp.message.register(item_price_handler, StateFilter(AddItemState.waiting_for_price))

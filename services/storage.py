@@ -2,13 +2,23 @@ import json
 import os
 
 class Storage:
-    def __init__(self, filename="products.json", image_folder="images"):
-        self.filename = filename
-        self.image_folder = image_folder
-        self._load_data()
+    _instance = None
 
-        if not os.path.exists(self.image_folder):
-            os.makedirs(self.image_folder)
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(Storage, cls).__new__(cls, *args, **kwargs)
+        return cls._instance
+
+    def __init__(self, filename="products.json", image_folder="images"):
+        if not hasattr(self, 'initialized'):
+            self.filename = filename
+            self.image_folder = image_folder
+            self._load_data()
+
+            if not os.path.exists(self.image_folder):
+                os.makedirs(self.image_folder)
+            
+            self.initialized = True
 
     def _load_data(self):
         if os.path.exists(self.filename):
@@ -41,6 +51,19 @@ class Storage:
         })
         self._save_data()
 
+    def delete_item(self, category, item_id):
+        items = self.data["categories"].get(category, [])
+        for i, item in enumerate(items):
+            if item["id"] == item_id:
+                image_path = item["image_path"]
+                del self.data["categories"][category][i]
+                self._save_data()
+                self._load_data()
+                if os.path.exists(image_path):
+                    os.remove(image_path)
+                return True
+        return False
+
     def get_all_items(self):
         all_items = []
         for category, items in self.data["categories"].items():
@@ -61,15 +84,11 @@ class Storage:
             if item["id"] == item_id:
                 return item
         return None
-    
-    def change_item_quantity(self, category, item_id, new_quantity=-1):
+
+    def change_item_quantity(self, category, item_id, new_quantity):
         items = self.data["categories"].get(category, [])
         for item in items:
             if item["id"] == item_id:
-                if new_quantity == -1:
-                    new_quantity = item["quantity"] - 1
-                else:
-                    new_quantity = max(0, new_quantity)
                 item["quantity"] = new_quantity
                 self._save_data()
                 return True
