@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import StateFilter
 from services.storage import Storage
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from services.states import AddItemState, EditItemState
+from services.states import AddItemState, EditItemState, CategoryState
 import os
 
 storage = Storage()
@@ -16,7 +16,9 @@ async def admin_panel_handler(message: types.Message):
         "/add_item - Добавить товар\n"
         "/delete_item - Удалить товар\n"
         "/edit_item - Изменить товар\n"
-        "/view_items - Просмотреть все товары"
+        "/view_items - Просмотреть все товары\n"
+        "/rename_category - Переименовать категорию\n"
+        "/delete_category - Удалить категорию"
     )
 
 async def add_item_handler(message: types.Message, state: FSMContext):
@@ -31,13 +33,13 @@ async def delete_item_handler(message: types.Message, state: FSMContext):
 
     keyboard = InlineKeyboardBuilder()
     for category in categories:
-        keyboard.add(types.InlineKeyboardButton(text=category, callback_data=f"delete_category_{category}"))
+        keyboard.add(types.InlineKeyboardButton(text=category, callback_data=f"delete_item_category_{category}"))
     
     await message.answer("Выберите категорию для удаления товара:", reply_markup=keyboard.as_markup())
     await state.set_state(AddItemState.waiting_for_delete_category)
 
 async def delete_item_category_handler(callback_query: types.CallbackQuery, state: FSMContext):
-    category = callback_query.data.replace("delete_category_", "")
+    category = callback_query.data.replace("delete_item_category_", "")
     items = storage.get_items_by_category(category)
     
     if not items:
@@ -54,7 +56,6 @@ async def delete_item_category_handler(callback_query: types.CallbackQuery, stat
 
 async def delete_item_confirm_handler(callback_query: types.CallbackQuery, state: FSMContext):
     data = callback_query.data.replace("delete_item_", "").split("_")
-    print(data, len(data))
     if len(data) != 2:
         await callback_query.message.answer("Ошибка! Неверный формат данных.")
         return
@@ -259,11 +260,104 @@ async def edit_item_image_handler(message: types.Message, state: FSMContext):
         await message.answer("Ошибка! Не удалось обновить изображение товара.")
     await state.clear()
 
+async def rename_category_handler(message: types.Message, state: FSMContext):
+    categories = storage.get_categories()
+    if not categories:
+        await message.answer("Категории товаров отсутствуют.")
+        return
+
+    keyboard = InlineKeyboardBuilder()
+    for category in categories:
+        keyboard.add(types.InlineKeyboardButton(text=category, callback_data=f"rename_category_{category}"))
+    
+    await message.answer("Выберите категорию для переименования:", reply_markup=keyboard.as_markup())
+    await state.set_state(CategoryState.waiting_for_rename_category)
+
+async def rename_category_confirm_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    category = callback_query.data.replace("rename_category_", "")
+    await state.update_data(old_category=category)
+    await callback_query.message.answer(f"Введите новое название для категории '{category}':")
+    await state.set_state(CategoryState.waiting_for_new_category_name)
+
+async def rename_category_save_handler(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    old_category = data["old_category"]
+    new_category = message.text.strip()
+
+    success = storage.rename_category(old_category, new_category)
+    if success:
+        await message.answer(f"✅ Категория '{old_category}' успешно переименована в '{new_category}'!")
+    else:
+        await message.answer(f"Ошибка! Не удалось переименовать категорию '{old_category}'.")
+    await state.clear()
+
+async def delete_category_handler(message: types.Message, state: FSMContext):
+    categories = storage.get_categories()
+    if not categories:
+        await message.answer("Категории товаров отсутствуют.")
+        return
+
+    keyboard = InlineKeyboardBuilder()
+    for category in categories:
+        keyboard.add(types.InlineKeyboardButton(text=category, callback_data=f"delete_category_{category}"))
+    
+    await message.answer("Выберите категорию для удаления:", reply_markup=keyboard.as_markup())
+    await state.set_state(CategoryState.waiting_for_delete_category)
+
+async def delete_category_confirm_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    category = callback_query.data.replace("delete_category_", "")
+    await state.update_data(category=category)
+    
+    keyboard = InlineKeyboardBuilder()
+    keyboard.add(types.InlineKeyboardButton(text="Удалить со всем содержимым", callback_data="delete_with_content"))
+    keyboard.add(types.InlineKeyboardButton(text="Перенести элементы в другую категорию", callback_data="transfer_items"))
+    
+    await callback_query.message.answer(
+        f"Вы хотите удалить категорию '{category}' со всеми товарами или перенести товары в другую категорию?",
+        reply_markup=keyboard.as_markup()
+    )
+    await state.set_state(CategoryState.waiting_for_delete_or_transfer)
+
+async def delete_category_action_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    action = callback_query.data
+    data = await state.get_data()
+    category = data["category"]
+    
+    if action == "delete_with_content":
+        success = storage.delete_category(category)
+        if success:
+            await callback_query.message.answer(f"✅ Категория '{category}' и все её товары успешно удалены!")
+        else:
+            await callback_query.message.answer(f"Ошибка! Не удалось удалить категорию '{category}'.")
+        await state.clear()
+    elif action == "transfer_items":
+        categories = storage.get_categories()
+        categories.remove(category)  # Remove the category being deleted from the list
+        
+        keyboard = InlineKeyboardBuilder()
+        for cat in categories:
+            keyboard.add(types.InlineKeyboardButton(text=cat, callback_data=f"transfer_to_{cat}"))
+        
+        await callback_query.message.answer("Выберите категорию для переноса товаров:", reply_markup=keyboard.as_markup())
+        await state.set_state(CategoryState.waiting_for_transfer_category)
+
+async def delete_category_save_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    category = data["category"]
+    transfer_to_category = callback_query.data.replace("transfer_to_", "")
+    
+    success = storage.delete_category(category, transfer_to_category=transfer_to_category)
+    if success:
+        await callback_query.message.answer(f"✅ Категория '{category}' удалена, а товары перенесены в категорию '{transfer_to_category}'!")
+    else:
+        await callback_query.message.answer(f"Ошибка! Не удалось удалить категорию '{category}' или перенести товары в категорию '{transfer_to_category}'.")
+    await state.clear()
+
 def register_handlers_admin(dp: Dispatcher):
     dp.message.register(admin_panel_handler, Command("admin_panel"))
     dp.message.register(add_item_handler, Command("add_item"))
     dp.message.register(delete_item_handler, Command("delete_item"))
-    dp.callback_query.register(delete_item_category_handler, lambda cb: cb.data.startswith("delete_category_"))
+    dp.callback_query.register(delete_item_category_handler, lambda cb: cb.data.startswith("delete_item_category_"))
     dp.callback_query.register(delete_item_confirm_handler, lambda cb: cb.data.startswith("delete_item_"))
     dp.message.register(item_category_handler, StateFilter(AddItemState.waiting_for_category))
     dp.message.register(item_name_handler, StateFilter(AddItemState.waiting_for_name))
@@ -278,3 +372,10 @@ def register_handlers_admin(dp: Dispatcher):
     dp.callback_query.register(edit_item_property_choice_handler, StateFilter(EditItemState.waiting_for_property_choice))
     dp.message.register(edit_item_save_handler, StateFilter(EditItemState.waiting_for_new_value))
     dp.message.register(edit_item_image_handler, StateFilter(EditItemState.waiting_for_new_image))
+    dp.message.register(rename_category_handler, Command("rename_category"))
+    dp.callback_query.register(rename_category_confirm_handler, lambda cb: cb.data.startswith("rename_category_"))
+    dp.message.register(rename_category_save_handler, StateFilter(CategoryState.waiting_for_new_category_name))
+    dp.message.register(delete_category_handler, Command("delete_category"))
+    dp.callback_query.register(delete_category_confirm_handler, lambda cb: cb.data.startswith("delete_category_"))
+    dp.callback_query.register(delete_category_action_handler, StateFilter(CategoryState.waiting_for_delete_or_transfer))
+    dp.callback_query.register(delete_category_save_handler, StateFilter(CategoryState.waiting_for_transfer_category))

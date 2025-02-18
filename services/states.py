@@ -17,5 +17,12 @@ class EditItemState(StatesGroup):
     waiting_for_new_value = State()
     waiting_for_new_image = State()
 
+class CategoryState(StatesGroup):
+    waiting_for_rename_category = State()
+    waiting_for_new_category_name = State()
+    waiting_for_delete_category = State()
+    waiting_for_delete_or_transfer = State()
+    waiting_for_transfer_category = State()
+
 class BuyItemState(StatesGroup):
     waiting_for_quantity = State()

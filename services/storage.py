@@ -24,8 +24,10 @@ class Storage:
         if os.path.exists(self.filename):
             with open(self.filename, "r") as f:
                 self.data = json.load(f)
+            if "next_item_id" not in self.data:
+                self.data["next_item_id"] = 1
         else:
-            self.data = {"categories": {}}
+            self.data = {"categories": {}, "next_item_id": 1}
 
     def _save_data(self):
         with open(self.filename, "w") as f:
@@ -36,11 +38,38 @@ class Storage:
             self.data["categories"][category_name] = []
             self._save_data()
 
+    def rename_category(self, old_category_name, new_category_name):
+        if old_category_name in self.data["categories"]:
+            self.data["categories"][new_category_name] = self.data["categories"].pop(old_category_name)
+            self._save_data()
+            return True
+        return False
+
+    def delete_category(self, category_name, transfer_to_category=None):
+        if category_name in self.data["categories"]:
+            if transfer_to_category:
+                if transfer_to_category not in self.data["categories"]:
+                    self.add_category(transfer_to_category)
+                self.data["categories"][transfer_to_category].extend(self.data["categories"][category_name])
+            del self.data["categories"][category_name]
+            self._save_data()
+            return True
+        return False
+
+    def transfer_items_to_category(self, source_category, target_category):
+        if source_category in self.data["categories"] and target_category in self.data["categories"]:
+            self.data["categories"][target_category].extend(self.data["categories"].pop(source_category))
+            self._save_data()
+            return True
+        return False
+
     def add_item(self, category, name, price, quantity, description, image_path):
         if category not in self.data["categories"]:
             self.add_category(category)
 
-        item_id = len(self.data["categories"][category]) + 1
+        item_id = self.data["next_item_id"]
+        self.data["next_item_id"] += 1
+
         self.data["categories"][category].append({
             "id": item_id,
             "name": name,
