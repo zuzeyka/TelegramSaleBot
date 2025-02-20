@@ -6,9 +6,22 @@ from services.storage import Storage
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from services.states import AddItemState, EditItemState, CategoryState
 import os
+from functools import wraps
 
 storage = Storage()
 
+ALLOWED_USERS = [339120628]
+
+def admin_only(handler):
+    @wraps(handler)
+    async def wrapper(message: types.Message, *args, **kwargs):
+        if message.from_user.id not in ALLOWED_USERS:
+            await message.answer("У вас нет доступа к этой команде.")
+            return
+        return await handler(message, *args, **kwargs)
+    return wrapper
+
+@admin_only
 async def admin_panel_handler(message: types.Message):
     await message.answer(
         "Добро пожаловать в админ-панель!\n"
@@ -21,10 +34,12 @@ async def admin_panel_handler(message: types.Message):
         "/delete_category - Удалить категорию"
     )
 
+@admin_only
 async def add_item_handler(message: types.Message, state: FSMContext):
     await message.answer("Введите категорию товара:")
     await state.set_state(AddItemState.waiting_for_category)
 
+@admin_only
 async def delete_item_handler(message: types.Message, state: FSMContext):
     categories = storage.get_categories()
     if not categories:
@@ -38,6 +53,7 @@ async def delete_item_handler(message: types.Message, state: FSMContext):
     await message.answer("Выберите категорию для удаления товара:", reply_markup=keyboard.as_markup())
     await state.set_state(AddItemState.waiting_for_delete_category)
 
+@admin_only
 async def delete_item_category_handler(callback_query: types.CallbackQuery, state: FSMContext):
     category = callback_query.data.replace("delete_item_category_", "")
     items = storage.get_items_by_category(category)
@@ -54,6 +70,7 @@ async def delete_item_category_handler(callback_query: types.CallbackQuery, stat
     await state.update_data(category=category)
     await state.set_state(AddItemState.waiting_for_delete_item)
 
+@admin_only
 async def delete_item_confirm_handler(callback_query: types.CallbackQuery, state: FSMContext):
     data = callback_query.data.replace("delete_item_", "").split("_")
     if len(data) != 2:
@@ -70,16 +87,19 @@ async def delete_item_confirm_handler(callback_query: types.CallbackQuery, state
         await callback_query.message.answer("Ошибка! Не удалось удалить товар.")
     await state.clear()
 
+@admin_only
 async def item_category_handler(message: types.Message, state: FSMContext):
     await state.update_data(category=message.text)
     await message.answer("Введите название товара:")
     await state.set_state(AddItemState.waiting_for_name)
 
+@admin_only
 async def item_name_handler(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
     await message.answer("Введите цену товара (только число):")
     await state.set_state(AddItemState.waiting_for_price)
 
+@admin_only
 async def item_price_handler(message: types.Message, state: FSMContext):
     try:
         price = float(message.text)
@@ -89,6 +109,7 @@ async def item_price_handler(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer("Ошибка! Введите корректную цену.")
 
+@admin_only
 async def item_quantity_handler(message: types.Message, state: FSMContext):
     try:
         quantity = int(message.text)
@@ -98,11 +119,13 @@ async def item_quantity_handler(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer("Ошибка! Введите корректное количество (только число).")
 
+@admin_only
 async def item_description_handler(message: types.Message, state: FSMContext):
     await state.update_data(description=message.text)
     await message.answer("Отправьте изображение товара (фото).")
     await state.set_state(AddItemState.waiting_for_image)
 
+@admin_only
 async def item_image_handler(message: types.Message, state: FSMContext):
     if not message.photo:
         await message.answer("Ошибка! Отправьте изображение, а не текст.")
@@ -129,6 +152,7 @@ async def item_image_handler(message: types.Message, state: FSMContext):
     await message.answer(f"✅ Товар '{name}' добавлен в категорию '{category}'!")
     await state.clear()
 
+@admin_only
 async def view_items_handler(message: types.Message):
     items = storage.get_all_items()
     if items:
@@ -139,6 +163,7 @@ async def view_items_handler(message: types.Message):
         response = "Список товаров пуст."
     await message.answer(response)
 
+@admin_only
 async def edit_item_handler(message: types.Message, state: FSMContext):
     categories = storage.get_categories()
     if not categories:
@@ -152,6 +177,7 @@ async def edit_item_handler(message: types.Message, state: FSMContext):
     await message.answer("Выберите категорию для редактирования товара:", reply_markup=keyboard.as_markup())
     await state.set_state(EditItemState.waiting_for_category)
 
+@admin_only
 async def edit_item_category_handler(callback_query: types.CallbackQuery, state: FSMContext):
     category = callback_query.data.replace("edit_category_", "")
     items = storage.get_items_by_category(category)
@@ -168,6 +194,7 @@ async def edit_item_category_handler(callback_query: types.CallbackQuery, state:
     await state.update_data(category=category)
     await state.set_state(EditItemState.waiting_for_item_id)
 
+@admin_only
 async def edit_item_id_handler(message: types.Message, state: FSMContext):
     try:
         item_id = int(message.text)
@@ -199,6 +226,7 @@ async def edit_item_id_handler(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer("Ошибка! Введите корректный ID.")
 
+@admin_only
 async def edit_item_property_choice_handler(callback_query: types.CallbackQuery, state: FSMContext):
     property_choice = callback_query.data.replace("edit_", "")
     await state.update_data(property_choice=property_choice)
@@ -209,6 +237,7 @@ async def edit_item_property_choice_handler(callback_query: types.CallbackQuery,
         await callback_query.message.answer(f"Введите новое значение для {property_choice}.")
         await state.set_state(EditItemState.waiting_for_new_value)
 
+@admin_only
 async def edit_item_save_handler(message: types.Message, state: FSMContext):
     data = await state.get_data()
     category = data["category"]
@@ -233,6 +262,7 @@ async def edit_item_save_handler(message: types.Message, state: FSMContext):
     finally:
         await state.clear()
 
+@admin_only
 async def edit_item_image_handler(message: types.Message, state: FSMContext):
     if not message.photo:
         await message.answer("Ошибка! Отправьте изображение, а не текст.")
@@ -260,6 +290,7 @@ async def edit_item_image_handler(message: types.Message, state: FSMContext):
         await message.answer("Ошибка! Не удалось обновить изображение товара.")
     await state.clear()
 
+@admin_only
 async def rename_category_handler(message: types.Message, state: FSMContext):
     categories = storage.get_categories()
     if not categories:
@@ -273,12 +304,14 @@ async def rename_category_handler(message: types.Message, state: FSMContext):
     await message.answer("Выберите категорию для переименования:", reply_markup=keyboard.as_markup())
     await state.set_state(CategoryState.waiting_for_rename_category)
 
+@admin_only
 async def rename_category_confirm_handler(callback_query: types.CallbackQuery, state: FSMContext):
     category = callback_query.data.replace("rename_category_", "")
     await state.update_data(old_category=category)
     await callback_query.message.answer(f"Введите новое название для категории '{category}':")
     await state.set_state(CategoryState.waiting_for_new_category_name)
 
+@admin_only
 async def rename_category_save_handler(message: types.Message, state: FSMContext):
     data = await state.get_data()
     old_category = data["old_category"]
@@ -291,6 +324,7 @@ async def rename_category_save_handler(message: types.Message, state: FSMContext
         await message.answer(f"Ошибка! Не удалось переименовать категорию '{old_category}'.")
     await state.clear()
 
+@admin_only
 async def delete_category_handler(message: types.Message, state: FSMContext):
     categories = storage.get_categories()
     if not categories:
@@ -304,6 +338,7 @@ async def delete_category_handler(message: types.Message, state: FSMContext):
     await message.answer("Выберите категорию для удаления:", reply_markup=keyboard.as_markup())
     await state.set_state(CategoryState.waiting_for_delete_category)
 
+@admin_only
 async def delete_category_confirm_handler(callback_query: types.CallbackQuery, state: FSMContext):
     category = callback_query.data.replace("delete_category_", "")
     await state.update_data(category=category)
@@ -318,6 +353,7 @@ async def delete_category_confirm_handler(callback_query: types.CallbackQuery, s
     )
     await state.set_state(CategoryState.waiting_for_delete_or_transfer)
 
+@admin_only
 async def delete_category_action_handler(callback_query: types.CallbackQuery, state: FSMContext):
     action = callback_query.data
     data = await state.get_data()
@@ -341,6 +377,7 @@ async def delete_category_action_handler(callback_query: types.CallbackQuery, st
         await callback_query.message.answer("Выберите категорию для переноса товаров:", reply_markup=keyboard.as_markup())
         await state.set_state(CategoryState.waiting_for_transfer_category)
 
+@admin_only
 async def delete_category_save_handler(callback_query: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     category = data["category"]
