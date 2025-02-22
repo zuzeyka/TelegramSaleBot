@@ -7,7 +7,7 @@ from services.storage import Storage
 from services.user import UserManager
 from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import StateFilter
-from services.states import BuyItemState
+from services.states import BuyItemState, TopUpBalanceState
 
 storage = Storage()
 user_manager = UserManager()
@@ -47,7 +47,9 @@ def register_handlers_user(dp: Dispatcher):
         else:
             response += "❌ Нет заказов.\n"
     
-        await message.answer(response, parse_mode="Markdown")
+        profile_keyboard = InlineKeyboardBuilder()
+        profile_keyboard.add(types.InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="top_up_balance"))
+        await message.answer(response, parse_mode="Markdown", reply_markup=profile_keyboard.as_markup())
 
     async def availability_handler(message: types.Message):
         all_items = storage.get_all_items()
@@ -214,6 +216,24 @@ def register_handlers_user(dp: Dispatcher):
         await callback_query.message.answer(f"Вы купили {quantity} шт. товара '{item['name']}' за {total_price:.2f} USD.")
         await state.clear()
 
+    async def top_up_balance_handler(callback_query: types.CallbackQuery, state: FSMContext):
+        await callback_query.message.answer("Введите сумму для пополнения баланса:")
+        await state.set_state(TopUpBalanceState.waiting_for_amount)
+
+    async def top_up_balance_amount_handler(message: types.Message, state: FSMContext):
+        try:
+            amount = float(message.text)
+            if amount <= 0:
+                await message.answer("Ошибка! Введите корректную сумму (больше нуля).")
+                return
+
+            user_id = message.from_user.id
+            user_manager.add_balance(user_id, amount)
+            await message.answer(f"Ваш баланс пополнен на {amount:.2f} USD.")
+            await state.clear()
+        except ValueError:
+            await message.answer("Ошибка! Введите корректную сумму.")
+
     dp.message.register(start_handler, Command("start"))
     dp.callback_query.register(show_items_in_category_handler, lambda cb: cb.data.startswith("category_"))
     dp.callback_query.register(show_items_handler, lambda cb: cb.data.startswith("item_"))
@@ -227,3 +247,5 @@ def register_handlers_user(dp: Dispatcher):
     dp.message.register(profile_handler, lambda msg: msg.text == "👤 Профиль")
     dp.message.register(rules_handler, lambda msg: msg.text == "📜 Правила")
     dp.message.register(help_handler, lambda msg: msg.text == "❤️ Помощь")
+    dp.callback_query.register(top_up_balance_handler, lambda cb: cb.data == "top_up_balance")
+    dp.message.register(top_up_balance_amount_handler, StateFilter(TopUpBalanceState.waiting_for_amount))

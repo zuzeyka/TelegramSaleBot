@@ -10,7 +10,7 @@ from functools import wraps
 
 storage = Storage()
 
-ALLOWED_USERS = [339120628]
+ALLOWED_USERS = [339120628, 648866532]
 
 def admin_only(handler):
     @wraps(handler)

@@ -26,3 +26,6 @@ class CategoryState(StatesGroup):
 
 class BuyItemState(StatesGroup):
     waiting_for_quantity = State()
+
+class TopUpBalanceState(StatesGroup):
+    waiting_for_amount = State()
